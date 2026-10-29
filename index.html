@@ -41,12 +41,13 @@
   .modal-box p { margin: 0 0 16px; white-space: pre-line; }
   .modal-box label { display: block; margin: 8px 0; font-size: 0.9rem; }
   .modal-box button { height: auto; background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; float: right; }
+  .loading { color: #888; font-size: 0.8rem; padding: 8px 14px; }
 </style>
 </head>
 <body>
 <header>
   <h1>Movie Desk</h1>
-  <div class="sub" id="counts">Ready</div>
+  <div class="sub" id="counts">Build 0.1 · Ready</div>
 </header>
 <main>
   <div>
@@ -95,7 +96,6 @@ let scanning = false;
 let stream = null;
 let confirmDisabledSession = false;
 let confirmDisabledPermanent = localStorage.getItem("md_confirm_off") === "1";
-
 function norm(s) { return (s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim(); }
 function parseSemi(text) {
   const lines = text.replace(/^\uFEFF/,"").trim().split(/\r?\n/);
@@ -148,13 +148,15 @@ async function fetchSuggestions(query) {
 }
 async function showSuggestions(val) {
   const box = $("suggest");
-  if (!val || val.length < 4 || /^\d+$/.test(val)) {
+  if (!val || val.length < 3 || /^\d+$/.test(val)) {
     box.classList.remove("show");
     return;
   }
+  box.innerHTML = `<div class="loading">Searching…</div>`;
+  box.classList.add("show");
   const matches = await fetchSuggestions(val);
   if (!matches.length) { box.classList.remove("show"); return; }
-  box.innerHTML = matches.slice(0, 8).map(m => `<div data-title="${m.title.replace(/"/g,""")}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
+  box.innerHTML = matches.slice(0, 8).map(m => `<div data-title="${m.title.replace(/"/g,"&quot;")}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
   box.classList.add("show");
   box.querySelectorAll("div").forEach(d => {
     d.onclick = () => {
@@ -167,10 +169,12 @@ async function showSuggestions(val) {
 async function doBuySearch() {
   const q = $("buyQuery").value.trim();
   const box = $("buyResults");
-  if (q.length < 2) { box.classList.remove("show"); return; }
+  if (q.length < 3) { box.classList.remove("show"); return; }
+  box.innerHTML = `<div class="loading">Searching…</div>`;
+  box.classList.add("show");
   const matches = await fetchSuggestions(q);
   if (!matches.length) { box.innerHTML = "<div>No results</div>"; box.classList.add("show"); return; }
-  box.innerHTML = matches.slice(0, 10).map(m => `<div data-title="${m.title.replace(/"/g,""")}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
+  box.innerHTML = matches.slice(0, 10).map(m => `<div data-title="${m.title.replace(/"/g,"&quot;")}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
   box.classList.add("show");
   box.querySelectorAll("div").forEach(d => {
     d.onclick = () => {
@@ -239,7 +243,7 @@ function render() {
   const q = norm($("q").value);
   const all = getAllTitles().filter(m => !q || norm(m.title).includes(q));
   $("out").innerHTML = all.slice(0,80).map(m => {
-    const key = m.title; // shared flag by title
+    const key = m.title;
     const isYes = !!homoFlags[key];
     const isOpen = openEditor === key;
     return `<div class="card">
@@ -295,7 +299,7 @@ $("newTitle").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); do
 $("newTitle").oninput = () => showSuggestions($("newTitle").value);
 $("buyQuery").oninput = () => {
   const val = $("buyQuery").value.trim();
-  if (val.length >= 4) doBuySearch();
+  if (val.length >= 3) doBuySearch();
   else $("buyResults").classList.remove("show");
 };
 $("scanBtn").onclick = startScan;
