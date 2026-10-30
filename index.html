@@ -155,7 +155,7 @@ async function showSuggestions(val) {
   }
   const matches = await fetchSuggestions(val);
   if (!matches.length) { box.classList.remove("show"); return; }
-  box.innerHTML = matches.slice(0, 8).map(m => `<div data-title="${m.title.replace(/"/g,""")}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
+  box.innerHTML = matches.slice(0, 8).map(m => `<div data-title="${m.title}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
   box.classList.add("show");
   box.querySelectorAll("div").forEach(d => {
     d.onclick = () => {
@@ -171,7 +171,7 @@ async function doBuySearch() {
   if (q.length < 2) { box.classList.remove("show"); return; }
   const matches = await fetchSuggestions(q);
   if (!matches.length) { box.innerHTML = "<div>No results</div>"; box.classList.add("show"); return; }
-  box.innerHTML = matches.slice(0, 10).map(m => `<div data-title="${m.title.replace(/"/g,""")}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
+  box.innerHTML = matches.slice(0, 10).map(m => `<div data-title="${m.title}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
   box.classList.add("show");
   box.querySelectorAll("div").forEach(d => {
     d.onclick = () => {
@@ -244,7 +244,7 @@ async function lookupBarcode(code) {
     }).join(" &nbsp; ");
   }
 
-  return { title: foundTitle, source: foundTitle ? results.find(r => r.title)?.name || "unknown" : "none" };
+  return { title: foundTitle, source: (results.find(r => r.title) || {}).name || "none" };
 }
 function stopScan() {
   scanning = false;
@@ -271,8 +271,8 @@ async function startScan() {
           const raw = codes[0].rawValue;
           stopScan();
           const result = await lookupBarcode(raw);
-          const title = (result && result.title) ? result.title : result;
-          const source = (result && result.source) ? result.source : "unknown";
+          const title = result && result.title ? result.title : null;
+          const source = result && result.source ? result.source : "none";
           $("newTitle").value = title || raw;
           $("newTitle").dataset.pendingId = "";
           showPopup(title ? "Found via " + source + ": " + title : "Scanned " + raw + " — no title match.");
