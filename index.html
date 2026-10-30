@@ -242,7 +242,7 @@ async function lookupBarcode(code) {
     status.innerHTML = "<b>Barcode lookup:</b><br>" + results.map(r => (r.ok ? "OK" : "FAIL") + " — " + r.name).join("<br>");
   }
 
-  return { title: foundTitle, source: (results.find(r => r.title) || {}).name || "none" };
+  return { title: foundTitle, source: (results.find(r => r.title) || {}).name || "none", results: results };
 }
 function stopScan() {
   scanning = false;
