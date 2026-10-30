@@ -41,13 +41,12 @@
   .modal-box p { margin: 0 0 16px; white-space: pre-line; }
   .modal-box label { display: block; margin: 8px 0; font-size: 0.9rem; }
   .modal-box button { height: auto; background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; float: right; }
-  .loading { color: #888; font-size: 0.8rem; padding: 8px 14px; }
 </style>
 </head>
 <body>
 <header>
   <h1>Movie Desk</h1>
-  <div class="sub" id="counts">Build 0.1 · Ready</div>
+  <div class="sub" id="counts">Ready</div>
 </header>
 <main>
   <div>
@@ -96,6 +95,7 @@ let scanning = false;
 let stream = null;
 let confirmDisabledSession = false;
 let confirmDisabledPermanent = localStorage.getItem("md_confirm_off") === "1";
+
 function norm(s) { return (s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim(); }
 function parseSemi(text) {
   const lines = text.replace(/^\uFEFF/,"").trim().split(/\r?\n/);
@@ -148,15 +148,13 @@ async function fetchSuggestions(query) {
 }
 async function showSuggestions(val) {
   const box = $("suggest");
-  if (!val || val.length < 3 || /^\d+$/.test(val)) {
+  if (!val || val.length < 4 || /^\d+$/.test(val)) {
     box.classList.remove("show");
     return;
   }
-  box.innerHTML = `<div class="loading">Searching…</div>`;
-  box.classList.add("show");
   const matches = await fetchSuggestions(val);
   if (!matches.length) { box.classList.remove("show"); return; }
-  box.innerHTML = matches.slice(0, 8).map(m => `<div data-title="${m.title.replace(/"/g,"&quot;")}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
+  box.innerHTML = matches.slice(0, 8).map(m => `<div data-title="${m.title.replace(/"/g,""")}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
   box.classList.add("show");
   box.querySelectorAll("div").forEach(d => {
     d.onclick = () => {
@@ -169,12 +167,10 @@ async function showSuggestions(val) {
 async function doBuySearch() {
   const q = $("buyQuery").value.trim();
   const box = $("buyResults");
-  if (q.length < 3) { box.classList.remove("show"); return; }
-  box.innerHTML = `<div class="loading">Searching…</div>`;
-  box.classList.add("show");
+  if (q.length < 2) { box.classList.remove("show"); return; }
   const matches = await fetchSuggestions(q);
   if (!matches.length) { box.innerHTML = "<div>No results</div>"; box.classList.add("show"); return; }
-  box.innerHTML = matches.slice(0, 10).map(m => `<div data-title="${m.title.replace(/"/g,"&quot;")}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
+  box.innerHTML = matches.slice(0, 10).map(m => `<div data-title="${m.title.replace(/"/g,""")}" data-id="${m.imdbId}">${m.title} (${m.year})</div>`).join("");
   box.classList.add("show");
   box.querySelectorAll("div").forEach(d => {
     d.onclick = () => {
@@ -188,16 +184,36 @@ async function doBuySearch() {
   });
 }
 async function lookupBarcode(code) {
-  try {
-    const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`);
-    const data = await res.json();
-    if (data.items && data.items[0]) return data.items[0].title || data.items[0].description || null;
-  } catch (e) {}
-  try {
-    const res = await fetch(`https://www.omdbapi.com/?s=${encodeURIComponent(code)}&apikey=${OMDB_KEY}`);
-    const data = await res.json();
-    if (data.Search && data.Search[0]) return data.Search[0].Title;
-  } catch (e) {}
+  const clean = (code || "").replace(/\D/g, "");
+  if (!clean) return null;
+  const candidates = [clean];
+  if (clean.length === 13 && clean.startsWith("0")) candidates.push(clean.slice(1));
+  if (clean.length === 12) candidates.push("0" + clean);
+
+  for (const c of candidates) {
+    try {
+      const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(c)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.items && data.items[0]) {
+          const t = data.items[0].title || data.items[0].description;
+          if (t) return t;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Secondary free source (media-oriented where available)
+  for (const c of candidates) {
+    try {
+      const res = await fetch(`https://api.barcodelookup.com/v3/products?barcode=${encodeURIComponent(c)}&formatted=y&key=trial`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.products && data.products[0] && data.products[0].title) return data.products[0].title;
+      }
+    } catch (e) {}
+  }
+
   return null;
 }
 function stopScan() {
@@ -243,7 +259,7 @@ function render() {
   const q = norm($("q").value);
   const all = getAllTitles().filter(m => !q || norm(m.title).includes(q));
   $("out").innerHTML = all.slice(0,80).map(m => {
-    const key = m.title;
+    const key = m.title; // shared flag by title
     const isYes = !!homoFlags[key];
     const isOpen = openEditor === key;
     return `<div class="card">
@@ -299,7 +315,7 @@ $("newTitle").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); do
 $("newTitle").oninput = () => showSuggestions($("newTitle").value);
 $("buyQuery").oninput = () => {
   const val = $("buyQuery").value.trim();
-  if (val.length >= 3) doBuySearch();
+  if (val.length >= 4) doBuySearch();
   else $("buyResults").classList.remove("show");
 };
 $("scanBtn").onclick = startScan;
