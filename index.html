@@ -211,7 +211,7 @@ async function lookupBarcode(code) {
     // UPCitemdb
     const upc = await trySource("UPCitemdb",
       `https://barcode-proxy.frankiymydear.workers.dev/?upc=${encodeURIComponent(c)}`,
-      d => d.items && d.items[0] && (d.items[0].title || d.items[0].description));
+      d => (d.items && d.items[0] && (d.items[0].title || d.items[0].description)) || null);
     results.push(upc);
     if (upc.title) foundTitle = upc.title;
 
