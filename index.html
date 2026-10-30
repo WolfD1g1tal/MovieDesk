@@ -70,6 +70,7 @@
     </div>
     <div class="buy-results" id="buyResults"></div>
   </div>
+  <div id="barcodeStatus" style="display:none; font-size:0.75rem; color:#aaa; margin:6px 0 10px; padding:8px; background:#161616; border-radius:8px; border:1px solid #2a2a2a;"></div>
   <div id="scanner"><video id="video" autoplay playsinline></video></div>
   <input type="search" id="q" placeholder="Search your titles…">
   <div id="out"></div>
@@ -183,6 +184,18 @@ async function doBuySearch() {
     };
   });
 }
+async function trySource(name, url, parse) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return { name, ok: false, title: null };
+    const data = await res.json();
+    const title = parse(data);
+    return { name, ok: !!title, title: title || null };
+  } catch (e) {
+    return { name, ok: false, title: null };
+  }
+}
+
 async function lookupBarcode(code) {
   const clean = (code || "").replace(/\D/g, "");
   if (!clean) return null;
@@ -190,31 +203,48 @@ async function lookupBarcode(code) {
   if (clean.length === 13 && clean.startsWith("0")) candidates.push(clean.slice(1));
   if (clean.length === 12) candidates.push("0" + clean);
 
+  const results = [];
+  let foundTitle = null;
+
   for (const c of candidates) {
-    try {
-      const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(c)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.items && data.items[0]) {
-          const t = data.items[0].title || data.items[0].description;
-          if (t) return t;
-        }
-      }
-    } catch (e) {}
+    if (foundTitle) break;
+    // UPCitemdb
+    const upc = await trySource("UPCitemdb",
+      `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(c)}`,
+      d => d.items && d.items[0] && (d.items[0].title || d.items[0].description));
+    results.push(upc);
+    if (upc.title) foundTitle = upc.title;
+
+    // UPCMDB (movie-focused)
+    if (!foundTitle) {
+      const upcm = await trySource("UPCMDB",
+        `https://upcmdb.com/api/v1/lookup/${encodeURIComponent(c)}`,
+        d => d.data && d.data.title);
+      results.push(upcm);
+      if (upcm.title) foundTitle = upcm.title;
+    }
+
+    // Open Library (weak for movies but free)
+    if (!foundTitle) {
+      const ol = await trySource("OpenLibrary",
+        `https://openlibrary.org/isbn/${encodeURIComponent(c)}.json`,
+        d => d.title);
+      results.push(ol);
+      if (ol.title) foundTitle = ol.title;
+    }
   }
 
-  // Secondary free source (media-oriented where available)
-  for (const c of candidates) {
-    try {
-      const res = await fetch(`https://api.barcodelookup.com/v3/products?barcode=${encodeURIComponent(c)}&formatted=y&key=trial`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.products && data.products[0] && data.products[0].title) return data.products[0].title;
-      }
-    } catch (e) {}
+  // Show status lights
+  const status = $("barcodeStatus");
+  if (status) {
+    status.style.display = "block";
+    status.innerHTML = results.map(r => {
+      const light = r.ok ? "??" : "??";
+      return `${light} ${r.name}`;
+    }).join(" &nbsp; ");
   }
 
-  return null;
+  return { title: foundTitle, source: foundTitle ? results.find(r => r.title)?.name || "unknown" : "none" };
 }
 function stopScan() {
   scanning = false;
@@ -240,10 +270,12 @@ async function startScan() {
         if (codes.length) {
           const raw = codes[0].rawValue;
           stopScan();
-          const title = await lookupBarcode(raw);
+          const result = await lookupBarcode(raw);
+          const title = (result && result.title) ? result.title : result;
+          const source = (result && result.source) ? result.source : "unknown";
           $("newTitle").value = title || raw;
           $("newTitle").dataset.pendingId = "";
-          showPopup(title ? "Found: " + title : "Scanned " + raw + " — no title match.");
+          showPopup(title ? "Found via " + source + ": " + title : "Scanned " + raw + " — no title match.");
           return;
         }
       } catch (e) {}
