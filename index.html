@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Movie Desk</title>
+<title>Movie Desk 0.3.8</title>
 <style>
   body { margin: 0; font-family: system-ui, sans-serif; background: #0e0e0e; color: #eee; }
   header { padding: 16px; border-bottom: 1px solid #222; position: sticky; top: 0; background: #0e0e0e; z-index: 10; }
@@ -45,7 +45,7 @@
 </head>
 <body>
 <header>
-  <h1>Movie Desk</h1>
+  <h1>Movie Desk 0.3.8</h1>
   <div class="sub" id="counts">Ready</div>
 </header>
 <main>
@@ -261,21 +261,45 @@ async function startScan() {
     $("scanner").style.display = "block";
     scanning = true;
     const detector = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e","code_128"] });
+
+    // Give time to focus before detection starts
+    const status = $("barcodeStatus");
+    status.style.display = "block";
+    status.innerHTML = "Hold steady — starting in 2 seconds...";
+    await new Promise(r => setTimeout(r, 2000));
+    if (!scanning) return;
+    status.innerHTML = "Ready — hold the barcode in frame";
+
+    let stable = null;
+    let stableCount = 0;
     const loop = async () => {
       if (!scanning) return;
       try {
         const codes = await detector.detect(video);
         if (codes.length) {
           const raw = codes[0].rawValue;
-          stopScan();
-          const result = await lookupBarcode(raw);
-          const title = result && result.title ? result.title : null;
-          const source = result && result.source ? result.source : "none";
-          $("newTitle").value = title || raw;
-          $("newTitle").dataset.pendingId = "";
-          const failed = (result.results || []).filter(r => !r.ok).map(r => r.name).join(", ");
-          showPopup(title ? "Found via " + source + ": " + title : "Scanned " + raw + " — no title match. Tried: " + (failed || "none"));
-          return;
+          if (raw === stable) {
+            stableCount++;
+          } else {
+            stable = raw;
+            stableCount = 1;
+          }
+          // Require the same code for ~1s of frames before accepting
+          if (stableCount >= 15) {
+            stopScan();
+            status.style.display = "none";
+            const result = await lookupBarcode(raw);
+            const title = result && result.title ? result.title : null;
+            const source = result && result.source ? result.source : "none";
+            $("newTitle").value = title || raw;
+            $("newTitle").dataset.pendingId = "";
+            const failed = (result.results || []).filter(r => !r.ok).map(r => r.name).join(", ");
+            showPopup(title ? "Found via " + source + ": " + title : "Scanned " + raw + " — no title match. Tried: " + (failed || "none"));
+            return;
+          }
+        } else {
+          stable = null;
+          stableCount = 0;
         }
       } catch (e) {}
       if (scanning) requestAnimationFrame(loop);
